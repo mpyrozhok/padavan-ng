@@ -1,0 +1,1 @@
+self.__precacheManifest=[{revision:"9be2d6fa33228eaaef3a00ce10238d31",url:"index.html"},{revision:"3b00bc3b62feafb50a2e",url:"vendor.js"},{revision:"617c6a550519013aed310e0fe85bb088",url:"flags/us.svg"},{revision:"0f6e3867129940ef785c7c8720e0b56d",url:"flags/ru.svg"},{revision:"23a22250de06d1793dc4",url:"app.js"},{revision:"23a22250de06d1793dc4",url:"app.css"}];
