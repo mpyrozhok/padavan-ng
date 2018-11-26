@@ -1,5 +1,5 @@
 config MT76X2_AP
-	tristate "MediaTek MT7620/MT7602E/7612E 802.11 AP driver"
+	tristate "MediaTek MT7620/MT7602E/7612E 802.11n/ac AP Support"
 	select WIRELESS_EXT
 	select WEXT_SPY
 	select WEXT_PRIV
@@ -27,18 +27,35 @@ config  MT76X2_AP_LED_SOFT_GPIO_DEV1
 	depends on (RT_FIRST_IF_MT7602E || RT_FIRST_IF_MT7612E || RT_FIRST_IF_MT7620) && (RT_SECOND_IF_MT7602E || RT_SECOND_IF_MT7612E)
 	default -1
 
+config  MT76X2_AP_WSC
+	bool "WSC (WiFi Simple Config)"
+	depends on MT76X2_AP
+	default n
+
+config  MT76X2_AP_WSC_V2
+	bool "WSC V2 (WiFi Simple Config Version 2)"
+	depends on MT76X2_AP
+	depends on MT76X2_AP_WSC
+	default n
+
+config  MT76X2_AP_WSC_NFC_SUPPORT
+	bool "WSC out-of-band (NFC)"
+	depends on MT76X2_AP
+	depends on MT76X2_AP_WSC
+	default n
+
 config  MT76X2_AP_LLTD
 	bool "LLTD (Link Layer Topology Discovery Protocol)"
 	depends on MT76X2_AP
 	default y
 
 config  MT76X2_AP_WDS
-	bool "WDS support"
+	bool "WDS"
 	depends on MT76X2_AP
 	default y
 
 config  MT76X2_AP_MBSS
-	bool "MBSSID support"
+	bool "MBSSID"
 	depends on MT76X2_AP
 	default y
 
@@ -46,21 +63,15 @@ config  MT76X2_AP_MBSS_NEW_MBSSID_MODE
 	bool "New MBSSID mode support"
 	depends on MT76X2_AP
 	depends on MT76X2_AP_MBSS
-	default n
+	default y
 
 config  MT76X2_AP_APCLI
-	bool "AP-Client support"
+	bool "AP-Client Support"
 	depends on MT76X2_AP
 	default y
 
 config  MT76X2_AP_APCLI_CERT
 	bool "AP-Client TGn Cert support"
-	depends on MT76X2_AP
-	depends on MT76X2_AP_APCLI
-	default n
-
-config  MT76X2_AP_APCLI_AUTO_BW
-	bool "AP-Client Auto Bandwidth Support"
 	depends on MT76X2_AP
 	depends on MT76X2_AP_APCLI
 	default n
@@ -71,33 +82,17 @@ config  MT76X2_AP_MAC_REPEATER
 	depends on MT76X2_AP_APCLI
 	default n
 
-config  MT76X2_AP_MWDS
-	bool "Wireless Mixed Bridge Mode (MWDS)"
-	depends on MT76X2_AP
-	select MT76X2_AP_APCLI
-	default n
-
-config  MT76X2_AP_SMART_MESH
-	bool "Smart Mesh"
-	depends on MT76X2_AP
-	select MT76X2_AP_MWDS
-	default n
-
-config  MT76X2_AP_CON_WPS
+config  MT76X2_AP_CON_WPS_SUPPORT
 	bool "Concurrent WPS support"
 	depends on MT76X2_AP
 	depends on MT76X2_AP_APCLI
-	depends on RT_WSC_V2
-	default n
-
-config  MT76X2_AP_AIRPLAY
-	bool "AirPlay support"
-	depends on MT76X2_AP
+	depends on MT76X2_AP_WSC_V2
 	default n
 
 config  MT76X2_AP_DFS
 	bool "DFS support"
 	depends on MT76X2_AP
+	depends on (RT_FIRST_IF_MT7612E || RT_SECOND_IF_MT7612E)
 	default n
 
 config  MT76X2_AP_CARRIER
@@ -105,18 +100,38 @@ config  MT76X2_AP_CARRIER
 	depends on MT76X2_AP
 	default n
 
-config  MT76X2_AP_GREENAP
-	bool "Green AP mode support"
+config  MT76X2_AP_ED_MONITOR
+	bool "Clear-Channel Assessment (CCA) Monitor Support"
 	depends on MT76X2_AP
-	depends on RT_FIRST_IF_MT7620
+	default n
+
+config  MT76X2_AP_DOT11R_FT_SUPPORT
+	bool "802.11r Fast BSS Transition"
+	depends on MT76X2_AP
+	default y
+
+config  MT76X2_AP_DOT11K_RRM_SUPPORT
+	bool "802.11k Radio Resource Management"
+	depends on MT76X2_AP
+	default y
+
+config  MT76X2_AP_EXT_CHANNEL_LIST
+	bool "Extension Channel List 802.11d compat"
+	depends on MT76X2_AP
+	default y
+
+#config  MT76X2_AP_VIDEO_TURBINE
+#	bool "Video Turbine support"
+#	depends on MT76X2_AP
+#	default n
 
 config  MT76X2_AP_IDS
 	bool "IDS (Intrusion Detection System) support"
 	depends on MT76X2_AP
-	default n
+	default y
 
-config  MT76X2_AP_DLS
-	bool "802.11e DLS (Direct-Link Setup) support"
+config  MT76X2_AP_80211N_DRAFT3
+	bool "802.11n Draft3 (BSS Coexistence)"
 	depends on MT76X2_AP
 	default n
 
@@ -138,18 +153,58 @@ choice
 	depends on RT_FIRST_IF_MT7620
 	default MT76X2_AP_INTERNAL_PA_INTERNAL_LNA
 config MT76X2_AP_INTERNAL_PA_INTERNAL_LNA
-	bool "Internal PA & Internal LNA"
+        bool "Internal PA & Internal LNA"
 config MT76X2_AP_INTERNAL_PA_EXTERNAL_LNA
-	bool "Internal PA & External LNA"
+        bool "Internal PA & External LNA"
 config MT76X2_AP_EXTERNAL_PA_EXTERNAL_LNA
-	bool "External PA & External LNA"
+        bool "External PA & External LNA"
 endchoice
 
+config  MT76X2_AP_80211W_PMF
+	bool "802.11w Protected Management Frames (PMF) support"
+	depends on MT76X2_AP
+	default n
+
+config  MT76X2_AP_IGMP_SNOOP
+	bool "IGMP snooping"
+	depends on MT76X2_AP
+	default n
+
+config  MT76X2_AP_MCAST_RATE_SPECIFIC
+	bool "User specific TX rate of mcast packets"
+	depends on MT76X2_AP
+	default n
+
+config  MT76X2_AP_NETIF_BLOCK
+	bool "NETIF Block"
+	depends on MT76X2_AP
+	default n
+	help
+	  Support Net interface block while Tx-Sw queue full
+
+#config  MT76X2_AP_HDR_TRANS
+#	bool "Header Translation Rx support"
+#	depends on MT76X2_AP
+
+config  MT76X2_AP_DELAYED_TCP_ACK
+	bool "Delayed TCP ACK support"
+	depends on MT76X2_AP
+	default n
+
+config  MT76X2_AP_SNMP
+	bool "Net-SNMP Support"
+	depends on MT76X2_AP
+	default y
+
+config  MT76X2_AP_SINGLE_SKU
+	bool "Single SKU support"
+	depends on MT76X2_AP
+	default n
+
 config  MT76X2_AP_RTMP_INTERNAL_TX_ALC
-	bool "MT7620 TSSI Compensation (Internal TX ALC)"
+	bool "MT7620 TSSI Compensation (Internal TX ALC) automatic compensate TX power by temperature"
 	depends on MT76X2_AP
 	depends on RT_FIRST_IF_MT7620
-	depends on !MT76X2_AP_EXTERNAL_PA_EXTERNAL_LNA
 	default n
 
 config  MT76X2_AP_RTMP_TEMPERATURE_COMPENSATION
@@ -158,9 +213,40 @@ config  MT76X2_AP_RTMP_TEMPERATURE_COMPENSATION
 	depends on RT_FIRST_IF_MT7620
 	default n
 
-config  MT76X2_AP_ADJ_PWR_CONSUMPTION
-	bool "MT7620 Reduce Power Consumption"
+config  MT76X2_AP_READ_MAC_FROM_MTD
+	bool "Read and set MAC from MTD/EEPROM"
 	depends on MT76X2_AP
-	depends on RT_FIRST_IF_MT7620
 	default n
 
+#config  MT76X2_AP_BIG_ENDIAN
+#	bool "Big-endian platform support"
+#	depends on MT76X2_AP
+#	depends on !RT_FIRST_IF_MT7620
+#	default n
+
+#config  MT76X2_AP_MC_SUPPORT
+#	bool "Multiple Card support"
+#	default n
+#	depends on MT76X2_AP
+
+config  MT76X2_AP_ATE
+	bool "Provide ATE testmode commands support"
+	depends on MT76X2_AP
+	select MT76X2_AP_QA
+	default n
+
+config  MT76X2_AP_QA
+	bool "Provide QA tool support"
+	depends on MT76X2_AP
+	depends on MT76X2_AP_ATE
+	default y
+
+config  MT76X2_AP_INTERFERENCE_REDUCE
+	bool "Enable minimize 802.11 interference effects"
+	default y
+	depends on MT76X2_AP
+
+config  MT76X2_AP_DBG
+	bool "Debug support for AP mode"
+	depends on MT76X2_AP
+	default n

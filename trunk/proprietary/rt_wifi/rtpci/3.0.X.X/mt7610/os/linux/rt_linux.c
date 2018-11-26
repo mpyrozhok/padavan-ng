@@ -45,15 +45,13 @@
 #undef RT_CONFIG_IF_OPMODE_ON_AP
 #undef RT_CONFIG_IF_OPMODE_ON_STA
 
-#if defined(CONFIG_AP_SUPPORT) && defined(CONFIG_STA_SUPPORT)
-#define RT_CONFIG_IF_OPMODE_ON_AP(__OpMode)	if (__OpMode == OPMODE_AP)
-#define RT_CONFIG_IF_OPMODE_ON_STA(__OpMode)	if (__OpMode == OPMODE_STA)
-#else
 #define RT_CONFIG_IF_OPMODE_ON_AP(__OpMode)
 #define RT_CONFIG_IF_OPMODE_ON_STA(__OpMode)
-#endif
-
+#ifdef DBG
+ULONG RTDebugLevel = RT_DEBUG_ERROR;
+#else
 ULONG RTDebugLevel = RT_DEBUG_OFF;
+#endif
 ULONG RTDebugFunc = 0;
 
 #ifdef OS_ABL_FUNC_SUPPORT
@@ -106,6 +104,9 @@ static inline VOID __RTMP_SetPeriodicTimer(
 	IN OS_NDIS_MINIPORT_TIMER * pTimer,
 	IN unsigned long timeout)
 {
+	if (timer_pending(pTimer))
+		return;
+
 	timeout = ((timeout * OS_HZ) / 1000);
 	pTimer->expires = jiffies + timeout;
 	add_timer(pTimer);
@@ -203,7 +204,18 @@ NDIS_STATUS os_alloc_mem(
 	OUT UCHAR **mem,
 	IN ULONG size)
 {
-	*mem = (PUCHAR) kmalloc(size, GFP_ATOMIC);
+#ifdef CONFIG_PREEMPT
+	if(in_atomic())
+	{
+		*mem = (PUCHAR) kmalloc(size, GFP_ATOMIC);
+	}
+	else
+	{		
+		*mem = (PUCHAR) kmalloc(size, GFP_KERNEL);
+	}
+#else
+		*mem = (PUCHAR) kmalloc(size, GFP_ATOMIC);
+#endif
 	if (*mem) {
 #ifdef VENDOR_FEATURE4_SUPPORT
 		OS_NumOfMemAlloc++;
@@ -291,8 +303,9 @@ PNDIS_PACKET RtmpOSNetPktAlloc(VOID *dummy, int size)
 	struct sk_buff *skb;
 	/* Add 2 more bytes for ip header alignment */
 	skb = dev_alloc_skb(size + 2);
-	if (skb != NULL)
+	if (skb != NULL) {
 		MEM_DBG_PKT_ALLOC_INC(skb);
+	}
 
 	return ((PNDIS_PACKET) skb);
 }
@@ -330,10 +343,6 @@ NDIS_STATUS RTMPAllocateNdisPacket(
 {
 	struct sk_buff *pPacket;
 
-
-	ASSERT(pData);
-	ASSERT(DataLen);
-
 	pPacket = dev_alloc_skb(HeaderLen + DataLen + RTMP_PKT_TAIL_PADDING);
 	if (pPacket == NULL) {
 		*ppPacket = NULL;
@@ -345,12 +354,12 @@ NDIS_STATUS RTMPAllocateNdisPacket(
 	MEM_DBG_PKT_ALLOC_INC(pPacket);
 
 	/* Clone the frame content and update the length of packet */
-	if (HeaderLen > 0)
+	if ((HeaderLen > 0) && (pHeader != NULL))
 		NdisMoveMemory(pPacket->data, pHeader, HeaderLen);
-	if (DataLen > 0)
+
+	if ((DataLen > 0) && (pData != NULL))
 		NdisMoveMemory(pPacket->data + HeaderLen, pData, DataLen);
 	skb_put(pPacket, HeaderLen + DataLen);
-/* printk(KERN_ERR "%s : pPacket = %p, len = %d\n", __FUNCTION__, pPacket, GET_OS_PKT_LEN(pPacket));*/
 
 	*ppPacket = (PNDIS_PACKET)pPacket;
 
@@ -369,8 +378,11 @@ VOID RTMPFreeNdisPacket(
 	IN VOID *pReserved,
 	IN PNDIS_PACKET pPacket)
 {
-	dev_kfree_skb_any(RTPKT_TO_OSPKT(pPacket));
-	MEM_DBG_PKT_FREE_INC(pPacket);
+	if (pPacket) {
+	    dev_kfree_skb_any(RTPKT_TO_OSPKT(pPacket));
+	    MEM_DBG_PKT_FREE_INC(pPacket);
+	    pPacket = NULL;
+	}
 }
 
 
@@ -435,11 +447,6 @@ PNDIS_PACKET DuplicatePacket(
 {
 	struct sk_buff *skb;
 	PNDIS_PACKET pRetPacket = NULL;
-	USHORT DataSize;
-	UCHAR *pData;
-
-	DataSize = (USHORT) GET_OS_PKT_LEN(pPacket);
-	pData = (PUCHAR) GET_OS_PKT_DATAPTR(pPacket);
 
 	skb = skb_clone(RTPKT_TO_OSPKT(pPacket), MEM_ALLOC_FLAG);
 	if (skb) {
@@ -469,9 +476,9 @@ PNDIS_PACKET duplicate_pkt(
 		MEM_DBG_PKT_ALLOC_INC(skb);
 
 		skb_reserve(skb, 2);
-		NdisMoveMemory(skb->tail, pHeader802_3, HdrLen);
+		NdisMoveMemory(GET_OS_PKT_DATATAIL(skb), pHeader802_3, HdrLen);
 		skb_put(skb, HdrLen);
-		NdisMoveMemory(skb->tail, pData, DataSize);
+		NdisMoveMemory(GET_OS_PKT_DATATAIL(skb), pData, DataSize);
 		skb_put(skb, DataSize);
 		skb->dev = pNetDev;	/*get_netdev_from_bssid(pAd, FromWhichBSSID); */
 		pPacket = OSPKT_TO_RTPKT(skb);
@@ -523,25 +530,32 @@ PNDIS_PACKET duplicate_pkt_with_VLAN(
 {
 	struct sk_buff *skb;
 	PNDIS_PACKET pPacket = NULL;
-	UINT16 VLAN_Size;
+	UINT16 VLAN_Size = 0;
+	INT skb_len = HdrLen + DataSize + 2;
 
-	if ((skb = __dev_alloc_skb(HdrLen + DataSize + LENGTH_802_1Q + 2,
-				   MEM_ALLOC_FLAG)) != NULL) {
+#ifdef WIFI_VLAN_SUPPORT
+	if (VLAN_VID != 0)
+		skb_len += LENGTH_802_1Q;
+#endif /* WIFI_VLAN_SUPPORT */
+
+	if ((skb = __dev_alloc_skb(skb_len, MEM_ALLOC_FLAG)) != NULL) {
 		MEM_DBG_PKT_ALLOC_INC(skb);
 
 		skb_reserve(skb, 2);
 
-		/* copy header (maybe +VLAN tag) */
+		/* copy header (maybe with VLAN tag) */
 		VLAN_Size = VLAN_8023_Header_Copy(VLAN_VID, VLAN_Priority,
 						  pHeader802_3, HdrLen,
-						  skb->tail, FromWhichBSSID,
+						  GET_OS_PKT_DATATAIL(skb),
+						  FromWhichBSSID,
 						  TPID);
+
 		skb_put(skb, HdrLen + VLAN_Size);
 
 		/* copy data body */
-		NdisMoveMemory(skb->tail, pData, DataSize);
+		NdisMoveMemory(GET_OS_PKT_DATATAIL(skb), pData, DataSize);
 		skb_put(skb, DataSize);
-		skb->dev = pNetDev;	/*get_netdev_from_bssid(pAd, FromWhichBSSID); */
+		skb->dev = pNetDev;
 		pPacket = OSPKT_TO_RTPKT(skb);
 	}
 
@@ -602,7 +616,7 @@ BOOLEAN RTMPL2FrameTxAction(
 
 }
 
-
+#ifdef SOFT_ENCRYPT
 PNDIS_PACKET ExpandPacket(
 	IN VOID *pReserved,
 	IN PNDIS_PACKET pPacket,
@@ -639,6 +653,7 @@ PNDIS_PACKET ExpandPacket(
 	return OSPKT_TO_RTPKT(skb);
 
 }
+#endif /* SOFT_ENCRYPT */
 
 PNDIS_PACKET ClonePacket(
 	IN VOID *pReserved,
@@ -646,24 +661,23 @@ PNDIS_PACKET ClonePacket(
 	IN PUCHAR pData,
 	IN ULONG DataSize)
 {
-	struct sk_buff *pRxPkt;
-	struct sk_buff *pClonedPkt;
+	struct sk_buff *pRxPkt,*pClonedPkt;
 
 	ASSERT(pPacket);
+	ASSERT(DataSize < 1530);
 	pRxPkt = RTPKT_TO_OSPKT(pPacket);
 
 	/* clone the packet */
 	pClonedPkt = skb_clone(pRxPkt, MEM_ALLOC_FLAG);
-
 	if (pClonedPkt) {
 		/* set the correct dataptr and data len */
 		MEM_DBG_PKT_ALLOC_INC(pClonedPkt);
 		pClonedPkt->dev = pRxPkt->dev;
 		pClonedPkt->data = pData;
 		pClonedPkt->len = DataSize;
-		pClonedPkt->tail = pClonedPkt->data + pClonedPkt->len;
-		ASSERT(DataSize < 1530);
+		skb_set_tail_pointer(pClonedPkt, pClonedPkt->len);
 	}
+
 	return pClonedPkt;
 }
 
@@ -706,7 +720,8 @@ void wlan_802_11_to_802_3_packet(
 	pOSPkt->dev = pNetDev;
 	pOSPkt->data = pData;
 	pOSPkt->len = DataSize;
-	pOSPkt->tail = pOSPkt->data + pOSPkt->len;
+
+	skb_set_tail_pointer(pOSPkt, pOSPkt->len);
 
 	/* copy 802.3 header */
 #ifdef CONFIG_AP_SUPPORT
@@ -1462,6 +1477,7 @@ int RtmpOSNetDevAttach(
 /*		GET_PAD_FROM_NET_DEV(pAd, pNetDev); */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31)
+		pNetDevOps->ndo_set_mac_address = eth_mac_addr;
 		pNetDevOps->ndo_open = pDevOpHook->open;
 		pNetDevOps->ndo_stop = pDevOpHook->stop;
 		pNetDevOps->ndo_start_xmit =
@@ -1679,8 +1695,7 @@ NDIS_STATUS AdapterBlockAllocateMemory(VOID *handle, VOID **ppAd, UINT32 SizeOfp
 	}
 #endif /* OS_ABL_FUNC_SUPPORT */
 
-/*	*ppAd = (PVOID)vmalloc(sizeof(RTMP_ADAPTER)); //pci_alloc_consistent(pci_dev, sizeof(RTMP_ADAPTER), phy_addr); */
-	*ppAd = (PVOID) vmalloc(SizeOfpAd);	/*pci_alloc_consistent(pci_dev, sizeof(RTMP_ADAPTER), phy_addr); */
+	*ppAd = (PVOID) vmalloc(SizeOfpAd);
 	if (*ppAd) {
 		NdisZeroMemory(*ppAd, SizeOfpAd);
 		return NDIS_STATUS_SUCCESS;
@@ -2488,8 +2503,13 @@ VOID RTMP_SetPeriodicTimer(NDIS_MINIPORT_TIMER *pTimerOrg, ULONG timeout)
 	OS_NDIS_MINIPORT_TIMER *pTimer;
 
 	pTimer = (OS_NDIS_MINIPORT_TIMER *) (pTimerOrg->pContent);
-	if (pTimer)
+
+	if (pTimer) {
+		if (timer_pending(pTimer))
+			return;
+
 		__RTMP_SetPeriodicTimer(pTimer, timeout);
+	}
 }
 
 

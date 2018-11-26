@@ -90,7 +90,11 @@ static inline void netdev_priv_set(struct net_device *dev, void *priv)
 }
 
 
+#ifdef DBG
 ULONG RTDebugLevel = RT_DEBUG_ERROR;
+#else
+ULONG RTDebugLevel = RT_DEBUG_OFF;
+#endif
 ULONG RTDebugFunc = 0;
 
 #ifdef OS_ABL_FUNC_SUPPORT
@@ -142,6 +146,9 @@ static inline VOID __RTMP_SetPeriodicTimer(
 	IN OS_NDIS_MINIPORT_TIMER * pTimer,
 	IN unsigned long timeout)
 {
+	if (timer_pending(pTimer))
+		return;
+
 	timeout = ((timeout * OS_HZ) / 1000);
 	pTimer->expires = jiffies + timeout;
 	add_timer(pTimer);
@@ -239,7 +246,18 @@ NDIS_STATUS os_alloc_mem(
 	OUT UCHAR **mem,
 	IN ULONG size)
 {
-	*mem = (PUCHAR) kmalloc(size, GFP_ATOMIC);
+#ifdef CONFIG_PREEMPT
+	if(in_atomic())
+	{
+		*mem = (PUCHAR) kmalloc(size, GFP_ATOMIC);
+	}
+	else
+	{		
+		*mem = (PUCHAR) kmalloc(size, GFP_KERNEL);
+	}
+#else
+		*mem = (PUCHAR) kmalloc(size, GFP_ATOMIC);
+#endif
 	if (*mem) {
 #ifdef VENDOR_FEATURE4_SUPPORT
 		OS_NumOfMemAlloc++;
@@ -401,8 +419,11 @@ NDIS_STATUS RTMPAllocateNdisPacket(
 */
 VOID RTMPFreeNdisPacket(VOID *pReserved, PNDIS_PACKET pPacket)
 {
-	dev_kfree_skb_any(RTPKT_TO_OSPKT(pPacket));
-	MEM_DBG_PKT_FREE_INC(pPacket);
+	if (pPacket) {
+	    dev_kfree_skb_any(RTPKT_TO_OSPKT(pPacket));
+	    MEM_DBG_PKT_FREE_INC(pPacket);
+	    pPacket = NULL;
+	}
 }
 
 
@@ -459,7 +480,7 @@ PNDIS_PACKET ClonePacket(PNET_DEV ndev, PNDIS_PACKET pkt, UCHAR *buf, ULONG sz)
 		pClonedPkt->dev = pRxPkt->dev;
 		pClonedPkt->data = buf;
 		pClonedPkt->len = sz;
-		pClonedPkt->tail = pClonedPkt->data + pClonedPkt->len;
+		skb_set_tail_pointer(pClonedPkt, pClonedPkt->len);
 	}
 
 	return pClonedPkt;
@@ -470,11 +491,6 @@ PNDIS_PACKET DuplicatePacket(PNET_DEV pNetDev, PNDIS_PACKET pPacket)
 {
 	struct sk_buff *skb;
 	PNDIS_PACKET pRetPacket = NULL;
-	//USHORT DataSize;
-	//UCHAR *pData;
-
-	//DataSize = (USHORT) GET_OS_PKT_LEN(pPacket);
-	//pData = (PUCHAR) GET_OS_PKT_DATAPTR(pPacket);
 
 	skb = skb_clone(RTPKT_TO_OSPKT(pPacket), MEM_ALLOC_FLAG);
 	if (skb) {
@@ -516,13 +532,13 @@ PNDIS_PACKET duplicate_pkt_vlan(
 		/* copy header (maybe with VLAN tag) */
 		VLAN_Size = VLAN_8023_Header_Copy(VLAN_VID, VLAN_Priority,
 						  pHeader802_3, HdrLen,
-						  skb->tail,
+						  GET_OS_PKT_DATATAIL(skb),
 						  TPID);
 
 		skb_put(skb, HdrLen + VLAN_Size);
 
 		/* copy data body */
-		NdisMoveMemory(skb->tail, pData, DataSize);
+		NdisMoveMemory(GET_OS_PKT_DATATAIL(skb), pData, DataSize);
 		skb_put(skb, DataSize);
 		skb->dev = pNetDev;
 		pPacket = OSPKT_TO_RTPKT(skb);
@@ -611,7 +627,7 @@ BOOLEAN RTMPL2FrameTxAction(
 
 }
 
-
+#ifdef SOFT_ENCRYPT
 PNDIS_PACKET ExpandPacket(
 	IN VOID *pReserved,
 	IN PNDIS_PACKET pPacket,
@@ -648,7 +664,7 @@ PNDIS_PACKET ExpandPacket(
 	return OSPKT_TO_RTPKT(skb);
 
 }
-
+#endif /* SOFT_ENCRYPT */
 
 VOID RtmpOsPktInit(
 	IN PNDIS_PACKET pNetPkt,
@@ -687,7 +703,8 @@ void wlan_802_11_to_802_3_packet(
 	pOSPkt->dev = pNetDev;
 	pOSPkt->data = pData;
 	pOSPkt->len = DataSize;
-	pOSPkt->tail = pOSPkt->data + pOSPkt->len;
+
+	skb_set_tail_pointer(pOSPkt, pOSPkt->len);
 
 	/* copy 802.3 header */
 #ifdef CONFIG_AP_SUPPORT
@@ -1625,6 +1642,7 @@ int RtmpOSNetDevAttach(
 	/* If we need hook some callback function to the net device structrue, now do it. */
 	if (pDevOpHook) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31)
+		pNetDevOps->ndo_set_mac_address = eth_mac_addr;
 		pNetDevOps->ndo_open = pDevOpHook->open;
 		pNetDevOps->ndo_stop = pDevOpHook->stop;
 		pNetDevOps->ndo_start_xmit =
@@ -2331,7 +2349,7 @@ void OS_CLEAR_BIT(int bit, unsigned long *flags)
 
 void OS_LOAD_CODE_FROM_BIN(unsigned char **image, char *bin_name, void *inf_dev, UINT32 *code_len)
 {
-	struct device *dev;
+	struct device *dev = NULL;
 	const struct firmware *fw_entry;
 
 #ifdef RTMP_PCI_SUPPORT
@@ -2645,8 +2663,13 @@ VOID RTMP_SetPeriodicTimer(NDIS_MINIPORT_TIMER *pTimerOrg, ULONG timeout)
 	OS_NDIS_MINIPORT_TIMER *pTimer;
 
 	pTimer = (OS_NDIS_MINIPORT_TIMER *) (pTimerOrg->pContent);
-	if (pTimer)
+
+	if (pTimer) {
+		if (timer_pending(pTimer))
+			return;
+
 		__RTMP_SetPeriodicTimer(pTimer, timeout);
+	}
 }
 
 

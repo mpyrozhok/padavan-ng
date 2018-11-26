@@ -1,11 +1,11 @@
 config MT7610_AP
-	tristate "MediaTek MT7610E 802.11 AP driver"
+	tristate "MediaTek MT7610E 802.11ac AP support"
 	select WIRELESS_EXT
 	select WEXT_SPY
 	select WEXT_PRIV
 
 config  MT7610_AP_LED
-	bool "LED support"
+	bool "LED Support"
 	depends on MT7610_AP
 	default y
 
@@ -18,6 +18,16 @@ config  MT7610_AP_LED_SOFT_GPIO
 	int "Soft LED GPIO pin"
 	depends on MT7610_AP && MT7610_AP_LED_SOFT
 	default -1
+
+config  MT7610_AP_WSC
+	bool "WSC (WiFi Simple Config)"
+	depends on MT7610_AP
+	default n
+
+config  MT7610_AP_WSC_V2
+	bool "WSC V2 (WiFi Simple Config Version 2)"
+	depends on MT7610_AP_WSC
+	default n
 
 config  MT7610_AP_LLTD
 	bool "LLTD (Link Layer Topology Discovery Protocol)"
@@ -38,25 +48,33 @@ config  MT7610_AP_MBSS_NEW_MBSSID_MODE
 	bool "New MBSSID mode support"
 	depends on MT7610_AP
 	depends on MT7610_AP_MBSS
-	default n
+	default y
 
 config  MT7610_AP_APCLI
-	bool "AP-Client support"
+	bool "AP-Client Support"
 	depends on MT7610_AP
 	default y
 
 config  MT7610_AP_MAC_REPEATER
-	bool "MAC Repeater Mode support"
+	bool "MAC Repeater Mode Support"
 	depends on MT7610_AP
 	depends on MT7610_AP_APCLI
 	default n
 
-config  MT7610_AP_CON_WPS
-	bool "Concurrent WPS support"
+config  MT7610_AP_CON_WPS_SUPPORT
+	bool "Concurrent WPS Support"
 	depends on MT7610_AP
 	depends on MT7610_AP_APCLI
-	depends on RT_WSC_V2
+	depends on MT7610_AP_WSC
+	depends on MT7610_AP_WSC_V2
 	default n
+
+config  MT7610_AP_NETIF_BLOCK
+	bool "NETIF Block"
+	depends on MT7610_AP
+	default n
+	help
+	  Support Net interface block while Tx-Sw queue full
 
 config  MT7610_AP_DFS
 	bool "DFS support"
@@ -68,15 +86,54 @@ config  MT7610_AP_CARRIER
 	depends on MT7610_AP
 	default n
 
-config  MT7610_AP_DLS
-	bool "802.11e DLS (Direct-Link Setup) support"
+config  MT7610_ED_MONITOR
+	bool "Clear-Channel Assessment (CCA) Monitor Support"
 	depends on MT7610_AP
 	default n
 
+config  MT7610_AP_DOT11R_FT_SUPPORT
+	bool "802.11r Fast BSS Transition"
+	depends on MT7610_AP
+	default y
+
+config  MT7610_AP_DOT11K_RRM_SUPPORT
+	bool "802.11k Radio Resource Management"
+	depends on MT7610_AP
+	default y
+
+config  MT7610_AP_EXT_CHANNEL_LIST
+	bool "Extension Channel List 802.11d compat"
+	depends on MT7610_AP
+	default y
+
+#config  MT7610_AP_VIDEO_TURBINE
+#	bool "Video Turbine support"
+#	depends on MT7610_AP
+#	default n
+
 config  MT7610_AP_IDS
-	bool "IDS (Intrusion Detection System) support"
+	bool "IDS (Intrusion Detection System) Support"
 	depends on MT7610_AP
 	default n
+
+config  MT7610_AP_80211N_DRAFT3
+	bool "802.11n Draft3"
+	depends on MT7610_AP
+	default n
+
+config  MT7610_AP_IGMP_SNOOP
+	bool "IGMP snooping"
+	depends on MT7610_AP
+	default n
+
+config  MT7610_AP_MCAST_RATE_SPECIFIC
+	bool "User specific TX rate of mcast packets"
+	depends on MT7610_AP
+	default n
+
+#config  MT7610_AP_HDR_TRANS
+#	bool "Header Translation Rx Support"
+#	depends on MT7610_AP
 
 choice
 	prompt "Tx Power Compensation"
@@ -84,9 +141,54 @@ choice
 	default MT7610_AP_TEMPERATURE_COMPENSATION
 
 	config MT7610_AP_TSSI_COMPENSATION
-	bool "TSSI DC Calibration & TSSI compensation"
+	bool "TSSI DC Calibration & TSSI compensation Support (Internal TX ALC)"
 
 	config MT7610_AP_TEMPERATURE_COMPENSATION
-	bool "Tx Power Temperature Compensation"
+	bool "Tx Power Temperature Compensation (External TX ALC)"
 endchoice
 
+config  MT7610_AP_SNMP
+	bool "Net-SNMP Support"
+	depends on MT7610_AP
+	default y
+
+config  MT7610_AP_SINGLE_SKU
+	bool "Single SKU"
+	depends on MT7610_AP
+
+config  MT7610_AP_READ_MAC_FROM_MTD
+	bool "Read and set MAC from MTD/EEPROM"
+	depends on MT7610_AP
+	default n
+
+#config  MT7610_AP_BIG_ENDIAN
+#	bool "Big-endian platform Support"
+#	depends on MT7610_AP
+#	default n
+
+#config  MT7610_AP_MC_SUPPORT
+#	bool "Multiple Card Support"
+#	default n
+#	depends on MT7610_AP
+
+config  MT7610_AP_ATE
+	bool "Provide ATE testmode commands support"
+	depends on MT7610_AP
+	select MT7610_AP_QA
+	default n
+
+config  MT7610_AP_QA
+	bool "Provide QA tool support"
+	depends on MT7610_AP
+	depends on MT7610_AP_ATE
+	default y
+
+config  MT7610_AP_INTERFERENCE_REDUCE
+	bool "Enable minimize 802.11 interference effects"
+	default y
+	depends on MT7610_AP
+
+config  MT7610_AP_DBG
+	bool "Debug support for AP mode"
+	depends on MT7610_AP
+	default n

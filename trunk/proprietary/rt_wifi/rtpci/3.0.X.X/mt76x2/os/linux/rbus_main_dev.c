@@ -205,9 +205,9 @@ int __init rt2880_module_init(void)
 	DBGPRINT(RT_DEBUG_ERROR, ("%s: at CSR addr 0x%lx, IRQ %u. \n", net_dev->name, (ULONG)csr_addr, net_dev->irq));
 
 #ifdef DBG				
-    /* Get the current time for calculating startup time */
-    NdisGetSystemUpTime(&end); diff_ms = (end-start)*1000/OS_HZ;
-    DBGPRINT(RT_DEBUG_OFF, ("WiFi RBUS Startup Time: %lu.%03lus\n",diff_ms/1000,diff_ms%1000));
+	/* Get the current time for calculating startup time */
+	NdisGetSystemUpTime(&end); diff_ms = (end-start)*1000/OS_HZ;
+	DBGPRINT(RT_DEBUG_OFF, ("WiFi RBUS Startup Time: %lu.%03lus\n",diff_ms/1000,diff_ms%1000));
 #endif /* DBG */
 
 	DBGPRINT(RT_DEBUG_ERROR, ("<=== rt2880_probe\n"));

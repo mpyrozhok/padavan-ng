@@ -5,6 +5,23 @@
 #include <linux/ktime.h>
 #include <net/sch_generic.h>
 
+/* MTK/Ralink radio drivers prevent ring overload hack and tune perf */
+#if defined (CONFIG_RALINK_RT2880) || \
+    defined (CONFIG_RALINK_RT3352) || \
+    defined (CONFIG_RALINK_RT3052) || \
+    defined (CONFIG_RALINK_RT5350) || \
+    defined (CONFIG_RALINK_RT3883) || \
+    defined (CONFIG_RALINK_MT7620) || \
+    defined (CONFIG_RALINK_MT7628)
+#define DEFAULT_TX_QUEUE_LEN            80
+#define DEFAULT_TX_QUEUE_LEN_WLAN       50
+#elif defined (CONFIG_RALINK_MT7621)
+#define DEFAULT_TX_QUEUE_LEN            160
+#define DEFAULT_TX_QUEUE_LEN_WLAN       50
+#else
+#define DEFAULT_TX_QUEUE_LEN    1000
+#endif
+
 struct qdisc_walker {
 	int	stop;
 	int	skip;
